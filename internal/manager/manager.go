@@ -17,6 +17,7 @@ import (
 )
 
 var configPath, root string
+var exportFormat, exportOut string
 
 func InitCommands() {
 	rootCmd.Flags().StringVar(&configPath, "config", ".github/assets.config.yaml",
@@ -29,6 +30,10 @@ func InitCommands() {
 	rootCmd.AddCommand(addTokenCmd)
 	rootCmd.AddCommand(addTokenlistCmd)
 	rootCmd.AddCommand(addTokenlistExtendedCmd)
+    // Export tokens command
+    exportTokensCmd.Flags().StringVar(&exportFormat, "format", "json", "Output format: json or csv")
+    exportTokensCmd.Flags().StringVar(&exportOut, "out", "", "Output file path (defaults by format)")
+    rootCmd.AddCommand(exportTokensCmd)
 }
 
 var (
@@ -93,6 +98,27 @@ var (
 			handleAddTokenList(args, path.TokenlistExtended)
 		},
 	}
+
+    exportTokensCmd = &cobra.Command{
+        Use:   "export-tokens",
+        Short: "Export tokens metadata to JSON or CSV",
+        Run: func(cmd *cobra.Command, args []string) {
+            setup()
+
+            // Set default output file if not provided
+            if exportOut == "" {
+                if exportFormat == "csv" {
+                    exportOut = "tokens-export.csv"
+                } else {
+                    exportOut = "tokens-export.json"
+                }
+            }
+
+            if err := ExportTokens(exportOut, exportFormat); err != nil {
+                log.Fatalf("Can't export tokens: %v", err)
+            }
+        },
+    }
 )
 
 func handleAddTokenList(args []string, tokenlistType path.TokenListType) {
