@@ -99,7 +99,9 @@ func ExportTokens(outputPath string, format string) error {
             for _, l := range assetInfo.Links {
                 rec.Links = append(rec.Links, LinkRecord{Name: ptrStr(l.Name), URL: ptrStr(l.URL)})
             }
-            records = append(records, rec)
+            if includeRecord(rec) {
+                records = append(records, rec)
+            }
         }
         return nil
     })
@@ -156,20 +158,53 @@ func writeCSV(out string, records []TokenExportRecord) error {
     defer f.Close()
     w := csv.NewWriter(f)
     defer w.Flush()
-    header := []string{"chain", "address", "name", "symbol", "decimals", "type", "website", "explorer", "status", "logoURI", "tags", "links"}
+    // Select columns
+    defaultHeader := []string{"chain", "address", "name", "symbol", "decimals", "type", "website", "explorer", "status", "logoURI", "tags", "links"}
+    header := defaultHeader
+    if strings.TrimSpace(exportColumns) != "" {
+        header = splitCSV(exportColumns)
+    }
     if err := w.Write(header); err != nil {
         return err
     }
     for _, r := range records {
-        tagsJoined := strings.Join(r.Tags, "|")
-        var linkPairs []string
-        for _, l := range r.Links {
-            name := strings.ReplaceAll(l.Name, "|", "/")
-            url := strings.ReplaceAll(l.URL, "|", "/")
-            linkPairs = append(linkPairs, fmt.Sprintf("%s:%s", name, url))
+        row := make([]string, 0, len(header))
+        for _, col := range header {
+            switch strings.ToLower(strings.TrimSpace(col)) {
+            case "chain":
+                row = append(row, r.Chain)
+            case "address":
+                row = append(row, r.Address)
+            case "name":
+                row = append(row, r.Name)
+            case "symbol":
+                row = append(row, r.Symbol)
+            case "decimals":
+                row = append(row, fmt.Sprintf("%d", r.Decimals))
+            case "type":
+                row = append(row, r.Type)
+            case "website":
+                row = append(row, r.Website)
+            case "explorer":
+                row = append(row, r.Explorer)
+            case "status":
+                row = append(row, r.Status)
+            case "logouri":
+                row = append(row, r.LogoURI)
+            case "tags":
+                row = append(row, strings.Join(r.Tags, "|"))
+            case "links":
+                var linkPairs []string
+                for _, l := range r.Links {
+                    name := strings.ReplaceAll(l.Name, "|", "/")
+                    url := strings.ReplaceAll(l.URL, "|", "/")
+                    linkPairs = append(linkPairs, fmt.Sprintf("%s:%s", name, url))
+                }
+                row = append(row, strings.Join(linkPairs, " | "))
+            default:
+                row = append(row, "")
+            }
         }
-        linksJoined := strings.Join(linkPairs, " | ")
-        row := []string{r.Chain, r.Address, r.Name, r.Symbol, fmt.Sprintf("%d", r.Decimals), r.Type, r.Website, r.Explorer, r.Status, r.LogoURI, tagsJoined, linksJoined}
         if err := w.Write(row); err != nil {
             return err
         }
@@ -210,4 +245,86 @@ func splitClean(rel string) []string {
         }
     }
     return out
+}
+
+func splitCSV(s string) []string {
+    if strings.TrimSpace(s) == "" {
+        return nil
+    }
+    parts := strings.Split(s, ",")
+    var out []string
+    for _, p := range parts {
+        p = strings.TrimSpace(p)
+        if p != "" {
+            out = append(out, p)
+        }
+    }
+    return out
+}
+
+func includeRecord(r TokenExportRecord) bool {
+    // Chains filter
+    if strings.TrimSpace(exportChains) != "" {
+        allowed := make(map[string]struct{})
+        for _, c := range splitCSV(strings.ToLower(exportChains)) {
+            allowed[c] = struct{}{}
+        }
+        if _, ok := allowed[strings.ToLower(r.Chain)]; !ok {
+            return false
+        }
+    }
+
+    // Symbols filter (contains, any)
+    if strings.TrimSpace(exportSymbols) != "" {
+        symbols := splitCSV(exportSymbols)
+        match := false
+        for _, s := range symbols {
+            if strings.Contains(strings.ToLower(r.Symbol), strings.ToLower(s)) {
+                match = true
+                break
+            }
+        }
+        if !match {
+            return false
+        }
+    }
+
+    // Name contains
+    if strings.TrimSpace(exportNameContains) != "" {
+        if !strings.Contains(strings.ToLower(r.Name), strings.ToLower(exportNameContains)) {
+            return false
+        }
+    }
+
+    // Tags (match any)
+    if strings.TrimSpace(exportTags) != "" {
+        tags := splitCSV(exportTags)
+        has := false
+        for _, t := range tags {
+            for _, rt := range r.Tags {
+                if strings.EqualFold(strings.TrimSpace(t), strings.TrimSpace(rt)) {
+                    has = true
+                    break
+                }
+            }
+            if has {
+                break
+            }
+        }
+        if !has {
+            return false
+        }
+    }
+
+    // Type
+    if strings.TrimSpace(exportType) != "" && !strings.EqualFold(r.Type, exportType) {
+        return false
+    }
+
+    // Status
+    if strings.TrimSpace(exportStatus) != "" && !strings.EqualFold(r.Status, exportStatus) {
+        return false
+    }
+
+    return true
 }
