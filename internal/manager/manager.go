@@ -18,6 +18,14 @@ import (
 )
 
 var configPath, root string
+var exportFormat, exportOut string
+var exportChains string
+var exportSymbols string
+var exportNameContains string
+var exportTags string
+var exportType string
+var exportStatus string
+var exportColumns string
 
 func InitCommands() {
 	rootCmd.Flags().StringVar(&configPath, "config", ".github/assets.config.yaml",
@@ -30,6 +38,17 @@ func InitCommands() {
 	rootCmd.AddCommand(addTokenCmd)
 	rootCmd.AddCommand(addTokenlistCmd)
 	rootCmd.AddCommand(addTokenlistExtendedCmd)
+    // Export tokens command
+    exportTokensCmd.Flags().StringVar(&exportFormat, "format", "json", "Output format: json or csv")
+    exportTokensCmd.Flags().StringVar(&exportOut, "out", "", "Output file path (defaults by format)")
+    exportTokensCmd.Flags().StringVar(&exportChains, "chains", "", "Comma-separated chains to include (e.g., ethereum,smartchain,solana)")
+    exportTokensCmd.Flags().StringVar(&exportSymbols, "symbols", "", "Comma-separated symbols to include (case-insensitive, contains match)")
+    exportTokensCmd.Flags().StringVar(&exportNameContains, "name-contains", "", "Only include tokens whose name contains this substring (case-insensitive)")
+    exportTokensCmd.Flags().StringVar(&exportTags, "tags", "", "Comma-separated tags to include (match any)")
+    exportTokensCmd.Flags().StringVar(&exportType, "type", "", "Only include tokens with this type (e.g., coin, token)")
+    exportTokensCmd.Flags().StringVar(&exportStatus, "status", "", "Only include tokens with this status (e.g., active)")
+    exportTokensCmd.Flags().StringVar(&exportColumns, "columns", "", "CSV only: comma-separated columns to include (default: all)")
+    rootCmd.AddCommand(exportTokensCmd)
 }
 
 var (
@@ -94,6 +113,27 @@ var (
 			handleAddTokenList(args, path.TokenlistExtended)
 		},
 	}
+
+    exportTokensCmd = &cobra.Command{
+        Use:   "export-tokens",
+        Short: "Export tokens metadata to JSON or CSV",
+        Run: func(cmd *cobra.Command, args []string) {
+            setup()
+
+            // Set default output file if not provided
+            if exportOut == "" {
+                if exportFormat == "csv" {
+                    exportOut = "tokens-export.csv"
+                } else {
+                    exportOut = "tokens-export.json"
+                }
+            }
+
+            if err := ExportTokens(exportOut, exportFormat); err != nil {
+                log.Fatalf("Can't export tokens: %v", err)
+            }
+        },
+    }
 )
 
 func handleAddTokenList(args []string, tokenlistType path.TokenListType) {
